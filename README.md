@@ -7,7 +7,7 @@ Static website for Luton Homes: five short-stay homes near Luton Airport (EasySt
 ## Commands
 
 ```
-node build.mjs          # writes dist/ (9 designs, 200 pages)
+node build.mjs          # writes dist/ (9 designs, 209 pages)
 node tests/check.mjs    # links, alt text, size budgets, no dashes in assets
 python3 -m http.server 8099 --directory dist
 ```
@@ -32,6 +32,8 @@ Without an API address the site is a preview: the calendar shows sample availabi
 ```
 API_URL=https://your-api.example.com node build.mjs
 ```
+
+With the API on, `/admin/login/` also offers Continue with Google and an emailed code (shown only for the methods the API reports on `GET /api/auth/methods`), and `/account/` lets a guest sign in the same way and see their own bookings. The session token returns in the address fragment after Google, is kept in `sessionStorage` for the tab, and is never put in a query string. Code: `src/signin.js`. No Google script or image is loaded on the site; the button is a plain link to the API.
 
 Then properties come from `GET /api/homes` (falling back to `data/homes.json` if unreachable), the calendar and booking use the API, owner sign-in is checked by the server, and the preview login file is left out of the build. Uploaded photo links need the API to have `API_PUBLIC_URL` set.
 
