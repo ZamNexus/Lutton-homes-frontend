@@ -1,4 +1,1 @@
-/* Home page variants (index.html only). The dawn and orbit designs are gone and no page sets data-design to either. */
-/* The one rule below is kept only because tests/check.mjs asserts it exists. */
-/* Hero content waits for the intro (dawn-go). Without JS the fallback reveals it at 2.5s. */
-[data-design="dawn"]:not(.dawn-go) :is(.hero-copy h1, .hero .lead, .search-card) { opacity: 0; animation: reveal-fallback 0s 2.5s forwards; }
+/* Home page variants. The dawn and orbit designs were removed; index.html still loads this file, so it stays empty. */
