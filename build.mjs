@@ -120,6 +120,8 @@ const homesJson = `<script id="lh-homes" type="application/json">${JSON.stringif
 const DESIGNS = [
 	{ id: 'client-original', name: 'Client Original', base: '/d/client-original', attr: 'client-original' },
 ];
+// The designs that were removed. Their old addresses become redirect pages too (Vercel did not apply a vercel.json redirect for them).
+const RETIRED = ['original', 'sky', 'departures', 'orbit', 'custom-1', 'custom-2', 'client-original2', 'cinematic'];
 // Root redirect page: it forwards to the same page in the one design and keeps the query (a leftover ?design=<id> is dropped).
 const stubFor = (target) => `<!doctype html>
 <html lang="en-GB">
@@ -237,11 +239,14 @@ for (const d of DESIGNS) {
 		built++;
 		// The same page at the root (/, /homes/, ...) becomes a redirect to the design's address, so old root links still land.
 		if (!errorPage) {
-			const rootOut = join(dist, p.out);
-			mkdirSync(dirname(rootOut), { recursive: true });
-			writeFileSync(rootOut, stubFor(d.base + '/' + p.out.replace(/index\.html$/, '')));
-			redirects++;
+			// The removed designs' addresses (/d/<old id>/...) get the same redirect page, so links shared before still land.
+			const target = d.base + '/' + p.out.replace(/index\.html$/, '');
+			for (const out of [join(dist, p.out), ...RETIRED.map((id) => join(dist, 'd', id, p.out))]) {
+				mkdirSync(dirname(out), { recursive: true });
+				writeFileSync(out, stubFor(target));
+				redirects++;
+			}
 		}
 	}
 }
-console.log(`built ${built} pages (${DESIGNS.length} design) and ${redirects} root redirects into dist/`);
+console.log(`built ${built} pages (${DESIGNS.length} design) and ${redirects} redirect pages (root and removed designs) into dist/`);
