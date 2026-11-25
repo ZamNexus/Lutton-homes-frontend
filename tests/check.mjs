@@ -104,13 +104,7 @@ for (const [file, budget] of Object.entries(assets)) {
 
 for (const file of files.filter((f) => f.startsWith('media/'))) {
 	const size = statSync(join(dist, file)).size;
-	// The Cinematic scrub video is the one large file (the 10k-websites target is 4 to 8 MB for a short 1080p clip);
-	// its poster and stills get a still-image budget.
-	const budget = file === 'media/cinematic/hero-scrub.mp4' ? 8 * 1024 * KB
-		: file.startsWith('media/cinematic/') ? 120 * KB
-		: file.startsWith('media/homes/') ? 110 * KB
-		: file === 'media/c2-aerial.webp' ? 180 * KB
-		: file === 'media/earth-night-se-england.webp' ? 100 * KB : BUDGET.media;
+	const budget = file.startsWith('media/homes/') ? 110 * KB : BUDGET.media;
 	if (size > budget) fail(`${file}: ${size} bytes, budget ${budget}`);
 }
 
