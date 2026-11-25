@@ -41,7 +41,8 @@ for (const page of pages) {
 	// Root addresses (/, /homes/, ...) are redirect pages: they forward to the same page in the design and nothing else.
 	const refresh = html.match(/<meta http-equiv="refresh" content="0; url=([^"]+)">/);
 	if (refresh) {
-		const expected = DESIGN_LIST[0].base + '/' + page.replace(/index\.html$/, '');
+		// Root pages and the removed designs' pages (d/<old id>/...) both forward to the same page in the design.
+		const expected = DESIGN_LIST[0].base + '/' + page.replace(/^d\/(?!client-original\/)[^/]+\//, '').replace(/index\.html$/, '');
 		if (refresh[1] !== expected) fail(`${name}: redirects to ${refresh[1]}, must be ${expected}`);
 		if (!existsSync(join(dist, refresh[1], 'index.html'))) fail(`${name}: redirect target ${refresh[1]} is not built`);
 		if (!html.includes('<meta name="robots" content="noindex">')) fail(`${name}: missing noindex`);
@@ -126,6 +127,11 @@ for (const d of DESIGN_LIST) for (const page of PAGES) {
 }
 for (const page of PAGES.filter((p) => !/^404\.html$/.test(p))) {
 	if (!existsSync(join(dist, page))) fail(`${page}: root redirect not built`);
+}
+for (const id of ['original', 'sky', 'departures', 'orbit', 'custom-1', 'custom-2', 'client-original2', 'cinematic']) {
+	for (const page of PAGES.filter((p) => !/^(404|500)\.html$/.test(p))) {
+		if (!existsSync(join(dist, 'd', id, page))) fail(`d/${id}/${page}: removed design redirect not built`);
+	}
 }
 if (!existsSync(join(dist, 'favicon.svg'))) fail('favicon.svg: missing from dist');
 // 500 page: Vercel does not serve a static custom 500 page on its own, so it is checked here directly.
