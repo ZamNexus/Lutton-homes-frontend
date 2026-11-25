@@ -61,5 +61,12 @@
       "source": "/api/availability/:slug/",
       "destination": "/api/availability/:slug"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/d/:design(original|sky|departures|orbit|custom-1|custom-2|client-original2|cinematic)/:rest*",
+      "destination": "/d/client-original/:rest*",
+      "permanent": false
+    }
   ]
 }

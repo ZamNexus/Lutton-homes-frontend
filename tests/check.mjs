@@ -12,8 +12,8 @@ const fail = (msg) => failures.push(msg);
 const PENDING_ROUTES = [];
 const ALLOWED_EXTERNAL = /^https:\/\/(wa\.me\/|www\.google\.com\/maps\/)/;
 const KB = 1024;
-const BUDGET = { html: 28 * KB, css: 38 * KB, js: 9 * KB, book: 6 * KB, homes: 4 * KB, media: 80 * KB, variantsCss: 14 * KB, variantsJs: 6 * KB, switcherJs: 3 * KB, switcherCss: 4 * KB, themeOriginalCss: 12 * KB };
-// Designs come from build.mjs (id, menu name, base path, html data-design value), in menu order.
+const BUDGET = { html: 28 * KB, css: 38 * KB, js: 9 * KB, book: 6 * KB, homes: 4 * KB, media: 80 * KB, variantsCss: 14 * KB, variantsJs: 6 * KB, switcherCss: 4 * KB };
+// The design comes from build.mjs (id, menu name, base path, html data-design value). There is one: Client Original.
 const DESIGN_LIST = [...readFileSync(join(root, 'build.mjs'), 'utf8').matchAll(/\{ id: '([\w-]+)', name: '([^']+)', base: '([^']*)', attr: '([\w-]+)' \}/g)].map(([, id, name, base, attr]) => ({ id, name, base, attr }));
 const designOf = (page) => DESIGN_LIST.find((d) => d.base && page.startsWith(d.base.slice(1) + '/')) || DESIGN_LIST[0];
 const HOMES = ['easystay', 'easystay-studio', 'luton-lodge', 'the-garden-nest', 'the-garden-studio'];
@@ -31,7 +31,6 @@ if (!existsSync(dist)) {
 const files = readdirSync(dist, { recursive: true }).map(String).filter((f) => statSync(join(dist, f)).isFile());
 const read = (f) => readFileSync(join(dist, f), 'utf8');
 const variantsCss = read('assets/variants.css');
-const themeCss = read('assets/theme-original.css');
 const switcherCss = read('assets/switcher.css');
 const pages = files.filter((f) => f.endsWith('.html') && !f.startsWith('requirements/')); // the checklist is a standalone tool page
 const idsIn = (f) => new Set([...read(f).matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
@@ -39,35 +38,30 @@ const idsIn = (f) => new Set([...read(f).matchAll(/\sid="([^"]+)"/g)].map((m) =>
 for (const page of pages) {
 	const html = read(page);
 	const name = relative(dist, join(dist, page));
+	// Root addresses (/, /homes/, ...) are redirect pages: they forward to the same page in the design and nothing else.
+	const refresh = html.match(/<meta http-equiv="refresh" content="0; url=([^"]+)">/);
+	if (refresh) {
+		const expected = DESIGN_LIST[0].base + '/' + page.replace(/index\.html$/, '');
+		if (refresh[1] !== expected) fail(`${name}: redirects to ${refresh[1]}, must be ${expected}`);
+		if (!existsSync(join(dist, refresh[1], 'index.html'))) fail(`${name}: redirect target ${refresh[1]} is not built`);
+		if (!html.includes('<meta name="robots" content="noindex">')) fail(`${name}: missing noindex`);
+		continue;
+	}
 	if (!/<title>[^<]+<\/title>/.test(html)) fail(`${name}: missing <title>`);
 	if (!/<meta name="description" content="[^"]+">/.test(html)) fail(`${name}: missing meta description`);
 	if (!html.includes('<meta name="robots" content="noindex">')) fail(`${name}: missing noindex`);
 	if ((html.match(/<h1[\s>]/g) || []).length !== 1) fail(`${name}: must have exactly one <h1>`);
 	if (!html.includes('<main id="content"')) fail(`${name}: missing main#content`);
 	if (PREVIEW_ON !== html.includes(PREVIEW)) fail(`${name}: preview strip ${PREVIEW_ON ? 'missing' : 'must not be built'}`);
-	// Error pages are the same for every design, so they carry no switcher.
-	if ((PREVIEW_ON && !/^(404|500)\.html$/.test(page)) !== html.includes('data-switcher')) fail(`${name}: design switcher ${PREVIEW_ON ? 'missing' : 'must not be built'}`);
+	// The design switcher is off: one design, nothing to switch to. Error pages are the same for every design.
+	if (html.includes('data-switcher') || html.includes('design-switcher') || html.includes('/assets/switcher.js')) fail(`${name}: the design switcher must not be built`);
 	const design = designOf(page);
 	const local = design.base ? page.slice(design.base.length) : page;
 	if (!html.includes(`<html lang="en-GB" data-design="${design.attr}">`)) fail(`${name}: <html> must carry data-design="${design.attr}"`);
-	if ((design.id === 'original') !== html.includes('/assets/theme-original.css')) fail(`${name}: theme-original.css belongs to the Original design only`);
-	if (PREVIEW_ON && !/^(404|500)\.html$/.test(page)) {
-		const options = [...html.matchAll(/<a role="menuitemradio" aria-checked="(true|false)" data-design-value="([^"]+)" href="([^"]+)">([^<]+)</g)];
-		if (options.map((m) => m[2]).join() !== DESIGN_LIST.map((d) => d.id).join()) fail(`${name}: switcher options must be ${DESIGN_LIST.map((d) => d.id).join(', ')} in that order`);
-		if (options.map((m) => m[4]).join() !== DESIGN_LIST.map((d) => d.name).join()) fail(`${name}: switcher labels must be ${DESIGN_LIST.map((d) => d.name).join(', ')}`);
-		const path = '/' + local.replace(/index\.html$/, '');
-		for (const [, checked, id, href] of options) {
-			const d = DESIGN_LIST.find((x) => x.id === id);
-			if (d && href !== d.base + path) fail(`${name}: switcher link for ${id} must be ${d.base + path}, got ${href}`);
-			if ((checked === 'true') !== (id === design.id)) fail(`${name}: switcher must mark ${design.id} as current`);
-		}
-		if (!html.includes(`<span class="design-switcher-text">Design: ${design.name}</span>`)) fail(`${name}: switcher label must be Design: ${design.name}`);
-		if (!html.includes('aria-label="Design preview switcher"')) fail(`${name}: switcher not announced as Design preview switcher`);
-		if (!html.includes('/assets/switcher.css')) fail(`${name}: switcher.css not linked`);
-	}
+	if (html.includes('theme-original')) fail(`${name}: theme-original.css is gone with the Original design`);
 	if (/\/assets\/variants\.(css|js)/.test(html) && local !== 'index.html') fail(`${name}: variant files are for the home page only`);
-	// Site links stay inside the page's own design (shared files and the switcher excepted).
-	for (const [, value] of html.replace(/<a class="strip-go"[^>]*>/, '').replace(/<div class="design-switcher"[\s\S]*?<\/div><\/div>/, '').matchAll(/\s(?:href|action)="(\/[^"]*)"/g)) {
+	// Site links stay inside the page's own design (shared files excepted).
+	for (const [, value] of html.replace(/<a class="strip-go"[^>]*>/, '').matchAll(/\s(?:href|action)="(\/[^"]*)"/g)) {
 		if (/^\/(assets|fonts|media|favicon)/.test(value)) continue;
 		if (design.base ? !value.startsWith(design.base + '/') : value.startsWith('/d/')) fail(`${name}: link ${value} leaves the ${design.name} design`);
 	}
@@ -101,7 +95,7 @@ for (const page of pages) {
 	if (size > (/homes\/[^/]+\/index\.html$/.test(name) ? 40 * KB : BUDGET.html)) fail(`${name}: ${size} bytes, budget ${BUDGET.html}`);
 }
 
-const assets = { 'assets/styles.css': BUDGET.css, 'assets/app.js': BUDGET.js, 'assets/book.js': BUDGET.book, 'assets/homes.js': BUDGET.homes, 'assets/variants.css': BUDGET.variantsCss, 'assets/variants.js': BUDGET.variantsJs, 'assets/switcher.js': BUDGET.switcherJs, 'assets/switcher.css': BUDGET.switcherCss, 'assets/theme-original.css': BUDGET.themeOriginalCss, 'assets/cal.js': 14 * KB, 'assets/quote.js': KB, 'assets/extras.css': 9 * KB, 'assets/ui.js': 8 * KB, 'assets/admin.js': 9 * KB, 'assets/admin-report.js': 12 * KB, 'assets/review.js': 3 * KB, 'assets/signin.js': 5 * KB };
+const assets = { 'assets/styles.css': BUDGET.css, 'assets/app.js': BUDGET.js, 'assets/book.js': BUDGET.book, 'assets/homes.js': BUDGET.homes, 'assets/variants.css': BUDGET.variantsCss, 'assets/variants.js': BUDGET.variantsJs, 'assets/switcher.css': BUDGET.switcherCss, 'assets/cal.js': 14 * KB, 'assets/quote.js': KB, 'assets/extras.css': 9 * KB, 'assets/ui.js': 8 * KB, 'assets/admin.js': 9 * KB, 'assets/admin-report.js': 12 * KB, 'assets/review.js': 3 * KB, 'assets/signin.js': 5 * KB };
 for (const [file, budget] of Object.entries(assets)) {
 	const text = read(file);
 	if (Buffer.byteLength(text) > budget) fail(`${file}: ${Buffer.byteLength(text)} bytes, budget ${budget}`);
@@ -124,10 +118,14 @@ for (const file of files.filter((f) => /\.(html|css|js)$/.test(f))) {
 	if (/[\u2013\u2014]|&ndash;|&mdash;/.test(text)) fail(`${file}: contains an en or em dash`);
 }
 
-if (DESIGN_LIST.length < 2 || DESIGN_LIST[0].id !== 'original' || DESIGN_LIST[0].base !== '') fail('build.mjs: Original must be the first design, at the site root');
+if (DESIGN_LIST.length !== 1 || DESIGN_LIST[0].id !== 'client-original' || DESIGN_LIST[0].base !== '/d/client-original') fail('build.mjs: the one design must be client-original, at /d/client-original');
 for (const d of DESIGN_LIST) for (const page of PAGES) {
-	if (d.base && /^404\.html$/.test(page)) continue;
-	if (!existsSync(join(dist, d.base, page))) fail(`${d.base}/${page}: not built`);
+	// The 404 page is the host's page for every missing path, so it is built once at the root.
+	const where = page === '404.html' ? page : join(d.base, page);
+	if (!existsSync(join(dist, where))) fail(`${where}: not built`);
+}
+for (const page of PAGES.filter((p) => !/^404\.html$/.test(p))) {
+	if (!existsSync(join(dist, page))) fail(`${page}: root redirect not built`);
 }
 if (!existsSync(join(dist, 'favicon.svg'))) fail('favicon.svg: missing from dist');
 // 500 page: Vercel does not serve a static custom 500 page on its own, so it is checked here directly.
@@ -161,25 +159,6 @@ for (const [, selector, body] of variantsCss.replace(/\/\*[\s\S]*?\*\//g, '').ma
 for (const file of files.filter((f) => /\.(html|js|css)$/.test(f) && f !== 'assets/variants.css')) {
 	if (/earth-night/.test(read(file))) fail(`${file}: earth image referenced outside the orbit rules`);
 }
-// Original layer: every rule is scoped to html[data-design="original"] (keyframes excepted, there are none).
-// Split a selector list on the commas that sit outside parentheses, so :is(a, b) stays whole.
-const topLevelParts = (list) => {
-	const parts = [];
-	let depth = 0;
-	let cur = '';
-	for (const ch of list) {
-		if (ch === '(') depth++;
-		if (ch === ')') depth--;
-		if (ch === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; } else cur += ch;
-	}
-	parts.push(cur.trim());
-	return parts.filter(Boolean);
-};
-for (const [, selector] of themeCss.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{[^{}]*\}/g)) {
-	for (const part of topLevelParts(selector)) {
-		if (!part.startsWith('[data-design="original"]')) fail(`assets/theme-original.css: selector not scoped to original: ${part}`);
-	}
-}
 if (!/\.design-switcher-button\s*\{[^}]*min-height:\s*48px/.test(switcherCss)) fail('assets/switcher.css: switcher button must be at least 48px high');
 if (!/\.design-switcher-glyph\s*\{/.test(switcherCss) || !/\.design-switcher-chev\s*\{/.test(switcherCss)) fail('assets/switcher.css: switcher needs a glyph and a chevron');
 if (!/\[data-design="dawn"\]:not\(\.dawn-go\)[^{]*\{[^}]*reveal-fallback/.test(variantsCss)) fail('assets/variants.css: dawn hero has no reveal-fallback');
@@ -201,7 +180,7 @@ if (!css.includes('prefers-reduced-motion')) fail('styles.css: no prefers-reduce
 if (!css.includes('@view-transition')) fail('styles.css: no @view-transition rule');
 if (!css.includes('reveal-fallback')) fail('styles.css: no reveal-fallback safety net for .reveal content');
 // Every animation name used in styles.css must have a @keyframes rule. Keywords, times, timing functions, counts and var() are skipped.
-const cssBare = (css + '\n' + variantsCss + '\n' + switcherCss + '\n' + themeCss).replace(/\/\*[\s\S]*?\*\//g, '');
+const cssBare = (css + '\n' + variantsCss + '\n' + switcherCss).replace(/\/\*[\s\S]*?\*\//g, '');
 const keyframeNames = new Set([...cssBare.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]));
 const CSS_KEYWORD = /^(none|normal|reverse|alternate|alternate-reverse|forwards|backwards|both|infinite|running|paused|linear|ease|ease-in|ease-out|ease-in-out|step-start|step-end|auto|!important)$/;
 const CSS_NOT_A_NAME = /^-?[\d.]+(m?s)?$/;
@@ -217,10 +196,7 @@ for (const [, value] of cssBare.matchAll(/(?<![\w-])animation(?:-name)?\s*:\s*([
 // Unit checks: evaluate app.js with no document; the module.exports guard supplies the helpers.
 const src = readFileSync(join(root, 'src/app.js'), 'utf8');
 for (const file of files.filter((f) => /\.(js|html)$/.test(f))) {
-	// The one exception: the Cinematic scrub hero needs scroll progress, so it registers a single passive
-	// listener that only sets a target and wakes a rAF loop (the 10k-websites scrub standard).
-	const scrollOk = file === 'assets/design-cinematic.js' && /addEventListener\('scroll', onScroll, \{ passive: true \}\)/.test(read(file));
-	if (/addEventListener\(\s*['"]scroll['"]/.test(read(file)) && !scrollOk) fail(`${file}: scroll event listener is not allowed`);
+	if (/addEventListener\(\s*['"]scroll['"]/.test(read(file))) fail(`${file}: scroll event listener is not allowed`);
 }
 const mod = { exports: {} };
 new Function('document', 'module', src)(undefined, mod);
@@ -276,7 +252,7 @@ eq((await call({ slug: 'luton-lodge' }, ENV, okFeed)).status, 404, 'availability
 eq((await call({ slug: '../x' }, ENV, okFeed)).status, 404, 'availability function: odd slug');
 const down = await call({ slug: 'the-garden-studio' }, ENV, async () => { throw new Error('boom ' + LINK); });
 eq([down.status, JSON.stringify(down.body).includes('secret-token')], [502, false], 'availability function: failure never leaks the link');
-eq(read('index.html').includes('<meta name="lh-cal" content="">'), true, 'calendar switch is off by default');
+eq(read('d/client-original/index.html').includes('<meta name="lh-cal" content="">'), true, 'calendar switch is off by default');
 
 if (failures.length) {
 	console.error(failures.map((f) => '- ' + f).join('\n'));
