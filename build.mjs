@@ -23,7 +23,7 @@ const homes = API_URL
 	? await fetch(API_URL + '/api/homes', { signal: AbortSignal.timeout(15_000) }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('answered ' + r.status)))).then(checkHomes).catch((e) => { console.warn(`Could not load homes from ${API_URL} (${e.message}); using data/homes.json`); return fileHomes(); })
 	: fileHomes();
 const TONES = ['sky', 'paper', 'ink'];
-// Design preview: the preview strip, the design switcher and the variant files. Set to false for launch.
+// Design preview: the preview strip and the variant files. Set to false for launch.
 const PREVIEW = true;
 const CANONICAL = 'Short-stay homes near Luton Airport. Five properties, one team. Book direct with Luton Homes.';
 
@@ -114,52 +114,39 @@ const lightbox = (h) => (h.images?.length ? `<dialog id="lightbox" class="lightb
 // The booking pages read name and rate by slug from this inline JSON (no request).
 const homesJson = `<script id="lh-homes" type="application/json">${JSON.stringify(Object.fromEntries(homes.map((h) => [h.slug, { name: h.name, rate: h.rate }]))).replace(/</g, '\\u003c')}</script>`;
 
-// Designs, in menu order. Each one is a full site built from the base templates in src/pages and src/partials,
-// with its own overrides in src/designs/<id>/{pages,partials} and its own stylesheet src/designs/<id>/design.css.
-// Original lives at the site root, the others under /d/<id>/. `attr` is the html data-design value the CSS keys on.
+// The one design: the Client Original site, built from the base templates in src/pages and src/partials with its overrides in
+// src/designs/client-original/{pages,partials} and its stylesheet src/designs/client-original/design.css. It lives under /d/client-original/.
+// The root addresses (/, /homes/, ...) are redirect pages to the same page there (see stubFor). `attr` is the html data-design value.
 const DESIGNS = [
-	{ id: 'original', name: 'Original', base: '', attr: 'original' },
-	{ id: 'sky', name: 'Sky', base: '/d/sky', attr: 'dawn' },
-	{ id: 'departures', name: 'Departures', base: '/d/departures', attr: 'departures' },
-	{ id: 'orbit', name: 'Orbit', base: '/d/orbit', attr: 'orbit' },
-	{ id: 'custom-1', name: 'Custom 1', base: '/d/custom-1', attr: 'custom-1' },
-	{ id: 'custom-2', name: 'Custom 2', base: '/d/custom-2', attr: 'custom-2' },
 	{ id: 'client-original', name: 'Client Original', base: '/d/client-original', attr: 'client-original' },
-	{ id: 'client-original2', name: 'Client Original 2', base: '/d/client-original2', attr: 'client-original2' },
-	{ id: 'cinematic', name: 'Cinematic', base: '/d/cinematic', attr: 'cinematic' },
 ];
-// The switcher lists every design as a plain link to the same page in that design, so it works without JavaScript.
-const switcherFor = (design, path) => '<div class="design-switcher" role="group" aria-label="Design preview switcher" data-switcher>'
-	+ '<button type="button" class="design-switcher-button" aria-haspopup="menu" aria-expanded="false" aria-controls="design-menu">'
-	+ `<span class="design-switcher-glyph" aria-hidden="true"></span><span class="design-switcher-text">Design: ${esc(design.name)}</span><span class="design-switcher-chev" aria-hidden="true"></span></button>`
-	+ '<div class="design-switcher-menu" id="design-menu" role="menu" hidden>'
-	+ DESIGNS.map((d) => `<a role="menuitemradio" aria-checked="${d === design}" data-design-value="${d.id}" href="${d.base}${path}">${esc(d.name)}</a>`).join('')
-	+ '</div></div><script src="/assets/switcher.js" defer></script>';
+// Root redirect page: it forwards to the same page in the one design and keeps the query (a leftover ?design=<id> is dropped).
+const stubFor = (target) => `<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luton Homes</title>
+<meta name="description" content="Luton Homes, now at its Client Original address.">
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="0; url=${target}">
+<script>(function(){var q=new URLSearchParams(location.search);q.delete("design");location.replace("${target}"+(q.size?"?"+q:"")+location.hash)})();</script>
+</head>
+<body>
+<p><a href="${target}">Go to the Luton Homes site</a></p>
+</body>
+</html>
+`;
+// Preview pages keep the preview strip and the variant files; the design switcher is gone (one design, nothing to switch to).
+// The strip's stylesheet (switcher.css) also styles the strip and the footer, so it stays.
 const PREVIEW_HEAD = PREVIEW ? '<link rel="stylesheet" href="/assets/switcher.css">' : '';
-// Old links used ?design=<id> on the root site; send them to that design's address.
-const LEGACY = Object.fromEntries([...DESIGNS.map((d) => [d.id, d.base]), ['dawn', '/d/sky']].filter(([, b]) => b));
-const LEGACY_SCRIPT = `<script>(function(){var m=${JSON.stringify(LEGACY)};try{var q=new URLSearchParams(location.search),v=q.get("design");if(m[v]){q.delete("design");location.replace(m[v]+location.pathname+(q.size?"?"+q:""))}}catch(e){}})();</script>`;
-// The Sky design plays the night-to-dawn intro once per browser session (the switcher clears the flag so a chosen design replays it).
-const DAWN_SCRIPT = '<script>(function(){var d=document.documentElement,seen=null;try{seen=sessionStorage.getItem("lh-dawn-seen")}catch(e){}d.classList.add(seen||matchMedia("(prefers-reduced-motion: reduce)").matches?"dawn-go":"dawn-pending")})();</script>';
-// Custom 1 plays its cloud-and-plane intro on the home page once per browser session; the class is set before first paint.
-const C1_SCRIPT = '<script>(function(){var d=document.documentElement,seen=null;try{seen=sessionStorage.getItem("lh-c1-seen")}catch(e){}if(!seen&&!matchMedia("(prefers-reduced-motion: reduce)").matches&&/^\\/d\\/custom-1\\/?$/.test(location.pathname))d.classList.add("c1-pending")})();</script>';
-// Custom 2 plays its own cloud-and-plane intro on the home page once per browser session.
-const C2_SCRIPT = '<script>(function(){var d=document.documentElement,seen=null;try{seen=sessionStorage.getItem("lh-c2-seen")}catch(e){}if(!seen&&!matchMedia("(prefers-reduced-motion: reduce)").matches&&/^\\/d\\/custom-2\\/?$/.test(location.pathname))d.classList.add("c2-pending")})();</script>';
-// Client Original plays the same plane-and-clouds intro as Custom 1 before its white landing page.
-const C3_SCRIPT = C1_SCRIPT.replace(/c1|custom-1/g, (m) => (m === 'c1' ? 'c3' : 'client-original'));
-// Client Original 2 keeps the earlier gradient-cloud intro; its own session key so both intros can play.
-const C3B_SCRIPT = C3_SCRIPT.replace('client-original', 'client-original2').replace('lh-c3-seen', 'lh-c3b-seen');
+// Client Original plays a plane-and-clouds intro on the home page once per browser session; the class is set before first paint.
+const CO_SCRIPT = '<script>(function(){var d=document.documentElement,seen=null;try{seen=sessionStorage.getItem("lh-c3-seen")}catch(e){}if(!seen&&!matchMedia("(prefers-reduced-motion: reduce)").matches&&/^\\/d\\/client-original\\/?$/.test(location.pathname))d.classList.add("c3-pending")})();</script>';
 // Client Original picks day or night from the visitor's local time (night 19:00 to 07:00) unless they chose; set before first paint.
 const THEME_SCRIPT = '<script>(function(){var d=document.documentElement,t=null;try{t=localStorage.getItem("lh-theme")}catch(e){}if(t!=="day"&&t!=="night"){var h=new Date().getHours();t=h>=19||h<7?"night":"day"}d.setAttribute("data-theme",t)})();</script>';
 const designHead = (d) => [
-	d.id === 'original' ? '<link rel="stylesheet" href="/assets/theme-original.css">' : '',
 	existsSync(at('src/designs', d.id, 'design.css')) ? `<link rel="stylesheet" href="/assets/design-${d.id}.css">` : '',
-	d.id === 'original' && PREVIEW ? LEGACY_SCRIPT : '',
-	d.attr === 'dawn' ? DAWN_SCRIPT : '',
-	d.id === 'custom-1' ? C1_SCRIPT : '',
-	d.id === 'custom-2' ? C2_SCRIPT : '',
-	d.id === 'client-original' ? C3_SCRIPT + '\n' + THEME_SCRIPT : '',
-	d.id === 'client-original2' ? C3B_SCRIPT : '',
+	CO_SCRIPT + '\n' + THEME_SCRIPT,
 ].filter(Boolean).join('\n');
 // Root-relative site links in a design's pages are moved under its base; shared files (/assets, /fonts, /media, /favicon) are not.
 const withBase = (html, base) => (base ? html.replace(/(\s(?:href|action)=")\/(?!assets\/|fonts\/|media\/|favicon|d\/)/g, `$1${base}/`) : html);
@@ -228,8 +215,9 @@ cpSync(at('src/extras.css'), join(dist, 'assets/extras.css'));
 for (const f of ['quote.js', 'cal.js', 'ui.js', 'review.js', 'admin.js', 'admin-report.js', 'signin.js']) cpSync(at('src/' + f), join(dist, 'assets', f));
 // The preview sign-in file exists in the build only when there is no API to check sign-in.
 if (!API_URL) cpSync(at('src/admin-preview.js'), join(dist, 'assets', 'admin-preview.js'));
-for (const f of ['switcher.js', 'switcher.css', 'variants.js', 'variants.css', 'theme-original.css']) cpSync(at('src/' + f), join(dist, 'assets', f));
+for (const f of ['switcher.css', 'variants.js', 'variants.css']) cpSync(at('src/' + f), join(dist, 'assets', f));
 let built = 0;
+let redirects = 0;
 for (const d of DESIGNS) {
 	const dir = at('src/designs', d.id);
 	if (existsSync(join(dir, 'design.css'))) cpSync(join(dir, 'design.css'), join(dist, 'assets', `design-${d.id}.css`));
@@ -237,17 +225,23 @@ for (const d of DESIGNS) {
 	const render = renderWith({ ...basePartials, ...readHtmlDir(join(dir, 'partials')) });
 	const designVars = { design: d.attr, designId: d.id, designHead: designHead(d), base: d.base, designJs: existsSync(join(dir, 'design.js')) ? `<script src="/assets/design-${d.id}.js" defer></script>` : '' };
 	for (const p of pages) {
-		// Error pages exist once, at the root: the host serves /404.html for every missing path.
-		if (d.base && /^(404|500)\.html$/.test(p.out)) continue;
+		// Error pages exist once, at the root: the host serves /404.html for every missing path. They are drawn in the design
+		// (their links go under its base) but written at the root.
+		const errorPage = /^(404|500)\.html$/.test(p.out);
 		const own = join(dir, 'pages', p.file);
 		const vars = { ...shared, ...designVars, title: p.title, description: p.description, ...p.vars };
-		const out = join(dist, d.base, p.out);
+		const out = join(dist, errorPage ? '' : d.base, p.out);
 		mkdirSync(dirname(out), { recursive: true });
-		let html = withBase(render(readFileSync(existsSync(own) ? own : at('src/pages', p.file), 'utf8'), vars), d.base);
-		const path = '/' + p.out.replace(/index\.html$/, '');
-		if (PREVIEW && !/^(404|500)\.html$/.test(p.out)) html = html.replace('</body>', switcherFor(d, path) + '</body>');
+		const html = withBase(render(readFileSync(existsSync(own) ? own : at('src/pages', p.file), 'utf8'), vars), d.base);
 		writeFileSync(out, html);
 		built++;
+		// The same page at the root (/, /homes/, ...) becomes a redirect to the design's address, so old root links still land.
+		if (!errorPage) {
+			const rootOut = join(dist, p.out);
+			mkdirSync(dirname(rootOut), { recursive: true });
+			writeFileSync(rootOut, stubFor(d.base + '/' + p.out.replace(/index\.html$/, '')));
+			redirects++;
+		}
 	}
 }
-console.log(`built ${built} pages (${DESIGNS.length} designs) into dist/`);
+console.log(`built ${built} pages (${DESIGNS.length} design) and ${redirects} root redirects into dist/`);
