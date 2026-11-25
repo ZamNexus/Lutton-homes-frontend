@@ -37,6 +37,8 @@ With the API on, `/admin/login/` also offers Continue with Google and an emailed
 
 Then properties come from `GET /api/homes` (falling back to `data/homes.json` if unreachable), the calendar and booking use the API, owner sign-in is checked by the server, and the preview login file is left out of the build. Uploaded photo links need the API to have `API_PUBLIC_URL` set.
 
+Live calendar without the API (demo): `api/availability/[slug].js` is a Vercel function that reads one home's Lodgify calendar link from the setting `FEED_LODGIFY_<HOME>` (for example `FEED_LODGIFY_THE_GARDEN_STUDIO`) and answers booked or free nights in the API's shape. Build with `CAL_URL=self` to make the calendar use it. In the Vercel project set `CAL_URL=self` and the `FEED_LODGIFY_*` links (type Secret, Production). A home with no link keeps the sample pattern. The function stores nothing and returns no guest names or links. When `API_URL` is set, the real API takes over the calendar.
+
 ## Deploy
 
 Vercel project `lutton-homes`: root directory `.` of this repository, build command `node build.mjs`, output `dist`. A push to `main` redeploys in 30 to 90 seconds. Set `API_URL` in the Vercel project settings when the API is hosted.
