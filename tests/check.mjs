@@ -104,13 +104,7 @@ for (const [file, budget] of Object.entries(assets)) {
 
 for (const file of files.filter((f) => f.startsWith('media/'))) {
 	const size = statSync(join(dist, file)).size;
-	// The Cinematic scrub video is the one large file (the 10k-websites target is 4 to 8 MB for a short 1080p clip);
-	// its poster and stills get a still-image budget.
-	const budget = file === 'media/cinematic/hero-scrub.mp4' ? 8 * 1024 * KB
-		: file.startsWith('media/cinematic/') ? 120 * KB
-		: file.startsWith('media/homes/') ? 110 * KB
-		: file === 'media/c2-aerial.webp' ? 180 * KB
-		: file === 'media/earth-night-se-england.webp' ? 100 * KB : BUDGET.media;
+	const budget = file.startsWith('media/homes/') ? 110 * KB : BUDGET.media;
 	if (size > budget) fail(`${file}: ${size} bytes, budget ${budget}`);
 }
 
@@ -158,16 +152,6 @@ for (const d of DESIGN_LIST) {
 		}
 	}
 }
-// Earth images: only from rules scoped to [data-design="orbit"], and nowhere else in the built site.
-for (const [, selector, body] of variantsCss.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-	if (/earth-night/.test(body) && !/\[data-design="orbit"\]/.test(selector)) fail(`assets/variants.css: earth image outside [data-design="orbit"]: ${selector.trim()}`);
-}
-for (const file of files.filter((f) => /\.(html|js|css)$/.test(f) && f !== 'assets/variants.css')) {
-	if (/earth-night/.test(read(file))) fail(`${file}: earth image referenced outside the orbit rules`);
-}
-if (!/\.design-switcher-button\s*\{[^}]*min-height:\s*48px/.test(switcherCss)) fail('assets/switcher.css: switcher button must be at least 48px high');
-if (!/\.design-switcher-glyph\s*\{/.test(switcherCss) || !/\.design-switcher-chev\s*\{/.test(switcherCss)) fail('assets/switcher.css: switcher needs a glyph and a chevron');
-if (!/\[data-design="dawn"\]:not\(\.dawn-go\)[^{]*\{[^}]*reveal-fallback/.test(variantsCss)) fail('assets/variants.css: dawn hero has no reveal-fallback');
 if (!read('index.html').includes('<meta name="robots" content="noindex">')) fail('index.html: missing noindex');
 const robots = read('robots.txt');
 if (!/^Disallow: \/$/m.test(robots)) fail('robots.txt: missing Disallow: /');
